@@ -1,10 +1,8 @@
 export default async function handler(req, res) {
-  // POST 요청만 허용
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // Vercel 환경변수에서 GEMINI_API_KEY 로드
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ 
@@ -26,13 +24,15 @@ export default async function handler(req, res) {
 - 목적지: ${destination}
 - 이동 수단: ${mode || '도보 및 대중교통'}
 
-위 정보를 기반으로 신호 대기 시간을 최소화하는 최적 경로와 신호등 관련 이동 팁을 분석해 주세요.
+위 정보를 기반으로 대한민국 내 실제 주요 장소/지명의 예상 위도(lat)와 경도(lng) 좌표 및 최적 경로를 분석해 주세요.
 반드시 아래 예시와 동일한 **JSON 형식**으로만 응답해 주세요:
 
 {
   "summary": "신호 대기 시간을 최소화한 최적 경로 요약",
   "estimatedTime": "약 15분",
   "trafficLightCount": "약 4개",
+  "startCoords": { "lat": 37.498095, "lng": 127.027610 },
+  "destCoords": { "lat": 37.500620, "lng": 127.036430 },
   "steps": [
     "1. 출발지에서 XX 방향으로 200m 이동 (첫 번째 신호등은 직진 신호 주기 긴 편)",
     "2. XX 사거리에서 우회전 후 보행자 횡단보도 이용",
@@ -44,17 +44,13 @@ export default async function handler(req, res) {
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-          },
+          generationConfig: { responseMimeType: 'application/json' },
         }),
       }
     );
@@ -65,7 +61,6 @@ export default async function handler(req, res) {
       throw new Error(data.error?.message || 'Gemini API 호출 중 오류가 발생했습니다.');
     }
 
-    // Gemini의 JSON 응답 파싱
     const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     const routeData = JSON.parse(candidateText);
 
