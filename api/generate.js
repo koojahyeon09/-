@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   const { start, destination, mode = 'driving' } = req.body;
 
   try {
-    // 1. 카카오 / Nominatim 기반 좌표 검색
+    // 1. 카카오 / Nominatim 위치 검색
     async function getCoordinates(keyword) {
       if (process.env.KAKAO_REST_KEY) {
         try {
@@ -37,14 +37,14 @@ export default async function handler(req, res) {
         }
       }
 
-      throw new Error(`"${keyword}"의 위치 좌표를 찾을 수 없습니다.`);
+      throw new Error(`"${keyword}" 좌표를 찾을 수 없습니다.`);
     }
 
     const startCoord = await getCoordinates(start);
     const destCoord = await getCoordinates(destination);
     const coords = { start: startCoord, dest: destCoord };
 
-    // 2. 도로 라인 정교화 (OSRM profile 및 steps 지정)
+    // 2. 도로 라인 경로 탐색 (OSRM Car/Foot 모드)
     let routeGeometry = null;
     try {
       const osrmMode = mode === 'foot' ? 'foot' : 'car';
@@ -60,7 +60,7 @@ export default async function handler(req, res) {
       console.warn("OSRM Router Error:", osrmErr);
     }
 
-    // 3. 경찰청 신호등 교차로 정보 수집
+    // 3. 경찰청 신호등 교차로 정보 수집 및 정제
     let trafficLights = [];
     if (process.env.TRAFFIC_LIGHT_API_KEY) {
       try {
@@ -80,7 +80,7 @@ export default async function handler(req, res) {
           })).filter(item => item.lat > 0 && item.lng > 0);
         }
       } catch (tErr) {
-        console.warn("Traffic API fetch error:", tErr);
+        console.warn("Traffic API Error:", tErr);
       }
     }
 
