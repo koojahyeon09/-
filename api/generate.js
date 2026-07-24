@@ -6,9 +6,9 @@ export default async function handler(req, res) {
   const { start, destination, mode = 'driving' } = req.body;
 
   try {
-    // 1. 정확한 한국 좌표 검색 (Nominatim 지오코딩 우선 사용)
+    // 1. 정확한 한국 좌표 검색 (OpenStreetMap Nominatim 우선 사용)
     async function getCoordinates(keyword) {
-      // 1차 시도: OpenStreetMap Nominatim (대한민국 한정 정확도 높음)
+      // 1차: OpenStreetMap Nominatim
       try {
         const nomRes = await fetch(
           `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(keyword + ' 대한민국')}`,
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
         console.warn("Nominatim search failed:", e);
       }
 
-      // 2차 시도: Kakao 키워드 검색 (KAKAO_REST_KEY 설정 시)
+      // 2차: Kakao API (환경변수 설정 시)
       if (process.env.KAKAO_REST_KEY) {
         try {
           const kakaoRes = await fetch(
@@ -48,7 +48,7 @@ export default async function handler(req, res) {
         }
       }
 
-      // 3차 시도: Gemini API (최신 gemini-2.5-flash)
+      // 3차: Gemini API Fallback
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
         throw new Error(`"${keyword}"의 위치를 찾을 수 없으며 GEMINI_API_KEY가 없습니다.`);
@@ -62,7 +62,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             contents: [{
               parts: [{
-                text: `대한민국 "${keyword}"의 정확한 위도(lat)와 경도(lng) 좌표를 알려줘. 부연설명 없이 JSON으로만 응답: {"lat": 위도숫자, "lng": 경도숫자}`
+                text: `대한민국 "${keyword}"의 정확한 위도(lat)와 경도(lng) 좌표를 알려줘. 부연설명 없이 오직 JSON으로만 응답: {"lat": 위도숫자, "lng": 경도숫자}`
               }]
             }],
             generationConfig: { responseMimeType: "application/json" }
@@ -83,7 +83,7 @@ export default async function handler(req, res) {
     const destCoord = await getCoordinates(destination);
     const coords = { start: startCoord, dest: destCoord };
 
-    // 2. OSRM 경로 생성
+    // 2. OSRM 경로 계산
     let routeGeometry = null;
     try {
       const osrmUrl = `https://router.project-osrm.org/route/v1/${mode}/${coords.start.lng},${coords.start.lat};${coords.dest.lng},${coords.dest.lat}?overview=full&geometries=geojson`;
@@ -97,7 +97,7 @@ export default async function handler(req, res) {
       console.warn("OSRM Error:", osrmErr);
     }
 
-    // 3. 경찰청 신호 정보 API 수집
+    // 3. 경찰청 신호 정보 API (/crsrd_map_info)
     let trafficLights = [];
     try {
       if (process.env.TRAFFIC_LIGHT_API_KEY) {
