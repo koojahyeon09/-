@@ -6,28 +6,8 @@ export default async function handler(req, res) {
   const { start, destination, mode = 'driving' } = req.body;
 
   try {
-    // 1. 정확한 한국 좌표 검색 (OpenStreetMap Nominatim 우선 사용)
+    // 1. 카카오 / Nominatim 기반 좌표 검색
     async function getCoordinates(keyword) {
-      // 1차: OpenStreetMap Nominatim
-      try {
-        const nomRes = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(keyword + ' 대한민국')}`,
-          { headers: { 'User-Agent': 'TrafficLightMapApp/1.0' } }
-        );
-        if (nomRes.ok) {
-          const nomData = await nomRes.json();
-          if (nomData && nomData.length > 0) {
-            return {
-              lat: parseFloat(nomData[0].lat),
-              lng: parseFloat(nomData[0].lon)
-            };
-          }
-        }
-      } catch (e) {
-        console.warn("Nominatim search failed:", e);
-      }
-
-      // 2차: Kakao API (환경변수 설정 시)
       if (process.env.KAKAO_REST_KEY) {
         try {
           const kakaoRes = await fetch(
@@ -43,50 +23,33 @@ export default async function handler(req, res) {
               };
             }
           }
-        } catch (e) {
-          console.warn("Kakao search failed:", e);
-        }
+        } catch (e) { console.warn("Kakao search failed:", e); }
       }
 
-      // 3차: Gemini API Fallback
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error(`"${keyword}"의 위치를 찾을 수 없으며 GEMINI_API_KEY가 없습니다.`);
-      }
-
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: `대한민국 "${keyword}"의 정확한 위도(lat)와 경도(lng) 좌표를 알려줘. 부연설명 없이 오직 JSON으로만 응답: {"lat": 위도숫자, "lng": 경도숫자}`
-              }]
-            }],
-            generationConfig: { responseMimeType: "application/json" }
-          })
-        }
+      const nomRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(keyword + ' 대한민국')}`,
+        { headers: { 'User-Agent': 'TrafficLightMapApp/1.0' } }
       );
-
-      const geminiData = await geminiRes.json();
-      if (!geminiRes.ok || !geminiData.candidates || geminiData.candidates.length === 0) {
-        throw new Error(`"${keyword}" 좌표 검색 실패`);
+      if (nomRes.ok) {
+        const nomData = await nomRes.json();
+        if (nomData && nomData.length > 0) {
+          return { lat: parseFloat(nomData[0].lat), lng: parseFloat(nomData[0].lon) };
+        }
       }
 
-      const text = geminiData.candidates[0].content.parts[0].text;
-      return JSON.parse(text);
+      throw new Error(`"${keyword}"의 위치 좌표를 찾을 수 없습니다.`);
     }
 
     const startCoord = await getCoordinates(start);
     const destCoord = await getCoordinates(destination);
     const coords = { start: startCoord, dest: destCoord };
 
-    // 2. OSRM 경로 계산
+    // 2. 도로 라인 정교화 (OSRM profile 및 steps 지정)
     let routeGeometry = null;
     try {
-      const osrmUrl = `https://router.project-osrm.org/route/v1/${mode}/${coords.start.lng},${coords.start.lat};${coords.dest.lng},${coords.dest.lat}?overview=full&geometries=geojson`;
+      const osrmMode = mode === 'foot' ? 'foot' : 'car';
+      const osrmUrl = `https://router.project-osrm.org/route/v1/${osrmMode}/${coords.start.lng},${coords.start.lat};${coords.dest.lng},${coords.dest.lat}?overview=full&geometries=geojson&steps=true`;
+      
       const osrmRes = await fetch(osrmUrl);
       const osrmData = await osrmRes.json();
 
@@ -94,25 +57,31 @@ export default async function handler(req, res) {
         routeGeometry = osrmData.routes[0].geometry;
       }
     } catch (osrmErr) {
-      console.warn("OSRM Error:", osrmErr);
+      console.warn("OSRM Router Error:", osrmErr);
     }
 
-    // 3. 경찰청 신호 정보 API (/crsrd_map_info)
+    // 3. 경찰청 신호등 교차로 정보 수집
     let trafficLights = [];
-    try {
-      if (process.env.TRAFFIC_LIGHT_API_KEY) {
+    if (process.env.TRAFFIC_LIGHT_API_KEY) {
+      try {
         const trafficApiKey = process.env.TRAFFIC_LIGHT_API_KEY;
-        const trafficUrl = `https://apis.data.go.kr/B551982/rti/crsrd_map_info?serviceKey=${trafficApiKey}&type=json&pageNo=1&numOfRows=100`;
+        const trafficUrl = `https://apis.data.go.kr/B551982/rti/crsrd_map_info?serviceKey=${trafficApiKey}&type=json&pageNo=1&numOfRows=300`;
         
         const trafficRes = await fetch(trafficUrl);
         if (trafficRes.ok) {
           const tData = await trafficRes.json();
-          const items = tData?.response?.body?.items?.item || tData?.body?.items || [];
-          trafficLights = Array.isArray(items) ? items : [items];
+          const rawItems = tData?.response?.body?.items?.item || tData?.body?.items || [];
+          const items = Array.isArray(rawItems) ? rawItems : [rawItems];
+          
+          trafficLights = items.map(item => ({
+            name: item.crsrdNm || item.itstNm || '신호 교차로',
+            lat: parseFloat(item.crsrdY || item.lat || item.y || 0),
+            lng: parseFloat(item.crsrdX || item.lng || item.x || 0)
+          })).filter(item => item.lat > 0 && item.lng > 0);
         }
+      } catch (tErr) {
+        console.warn("Traffic API fetch error:", tErr);
       }
-    } catch (tErr) {
-      console.warn("Traffic API Error:", tErr);
     }
 
     return res.status(200).json({
@@ -123,7 +92,6 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error("Server Error:", error);
-    return res.status(500).json({ success: false, error: error.message || '처리 중 에러 발생' });
+    return res.status(500).json({ success: false, error: error.message });
   }
 }
