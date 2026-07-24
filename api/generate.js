@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     const destCoord = await getCoordinates(destination);
     const coords = { start: startCoord, dest: destCoord };
 
-    // 2. OSRM 경로 및 상세 지점(Steps) 계산
+    // 2. OSRM 경로 계산 (보행자 / 차도 모드 선택 가능)
     let routeGeometry = null;
     let pathPoints = [];
 
@@ -39,7 +39,6 @@ export default async function handler(req, res) {
       if (osrmData.code === 'Ok' && osrmData.routes && osrmData.routes.length > 0) {
         routeGeometry = osrmData.routes[0].geometry;
         
-        // 경로 상의 꺾어지는 주요 교차로/신호등 지점 추출
         const legs = osrmData.routes[0].legs || [];
         legs.forEach(leg => {
           leg.steps.forEach(step => {
@@ -59,10 +58,19 @@ export default async function handler(req, res) {
       console.warn("OSRM Error:", osrmErr);
     }
 
-    // 경로 중간중간의 주요 교차로 지점들을 신호등 마커 데이터로 변환 (중복 제거)
-    const trafficLights = pathPoints.filter((pt, idx, self) =>
-      idx === self.findIndex((t) => Math.abs(t.lat - pt.lat) < 0.0005 && Math.abs(t.lng - pt.lng) < 0.0005)
-    );
+    // 주요 교차로 추출 및 신호등 초기화 정보 부여 (60초 주기 시뮬레이션용)
+    const trafficLights = pathPoints
+      .filter((pt, idx, self) =>
+        idx === self.findIndex((t) => Math.abs(t.lat - pt.lat) < 0.0005 && Math.abs(t.lng - pt.lng) < 0.0005)
+      )
+      .map((tl, index) => ({
+        id: `tl_${index}`,
+        name: tl.name,
+        lat: tl.lat,
+        lng: tl.lng,
+        // 각 신호등마다 고유한 시작 오프셋(초)을 부여하여 개별적으로 신호가 바뀌도록 설정
+        offset: (index * 17) % 60 
+      }));
 
     return res.status(200).json({
       success: true,
