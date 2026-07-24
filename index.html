@@ -3,106 +3,135 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Traffic Light Map</title>
+  <title>신호등 지도 (Traffic Light Map)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    body { margin: 0; padding: 0; font-family: sans-serif; }
-    #search-bar {
-      position: absolute; top: 15px; left: 50px; z-index: 1000;
-      background: white; padding: 12px; border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2); display: flex; gap: 6px;
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html { width: 100%; height: 100%; font-family: sans-serif; }
+    #map { width: 100%; height: 100vh; }
+    .search-box {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      display: flex;
+      gap: 10px;
+      align-items: center;
     }
-    #map { width: 100vw; height: 100vh; }
-    input, select, button { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-    button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
-    
-    /* 신호등 커스텀 마커 스타일 */
-    .traffic-icon {
-      font-size: 20px; text-align: center; line-height: 20px;
+    .search-box input, .search-box select, .search-box button {
+      padding: 8px 12px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
     }
+    .search-box button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .search-box button:hover { background-color: #0056b3; }
   </style>
 </head>
 <body>
 
-  <div id="search-bar">
-    <input type="text" id="startInput" placeholder="출발지 (예: 서현역)">
-    <input type="text" id="destInput" placeholder="목적지 (예: 분당대진고등학교)">
+  <div class="search-box">
+    <input type="text" id="startInput" placeholder="출발지 (예: 서현역)" value="서현역">
+    <input type="text" id="destInput" placeholder="목적지 (예: 분당대진고등학교)" value="분당대진고등학교">
     <select id="modeSelect">
       <option value="driving">차도 경로</option>
       <option value="foot">보행자 경로</option>
     </select>
-    <button onclick="findRoute()">경로 검색</button>
+    <button onclick="searchRoute()">경로 검색</button>
   </div>
 
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const map = L.map('map').setView([37.3827, 127.1189], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    // 1. 지도 초기화 (서울/경기 중심)
+    const map = L.map('map').setView([37.3827, 127.1189], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
 
-    let currentLayers = [];
+    let routeLayer = null;
+    let markers = [];
+    let trafficMarkers = [];
 
-    async function findRoute() {
+    // 2. 경로 및 신호등 검색 함수
+    async function searchRoute() {
       const start = document.getElementById('startInput').value;
       const destination = document.getElementById('destInput').value;
       const mode = document.getElementById('modeSelect').value;
 
-      if (!start || !destination) return alert("출발지와 목적지를 입력하세요.");
-
-      // 기존 레이어 제거
-      currentLayers.forEach(layer => map.removeLayer(layer));
-      currentLayers = [];
+      if (!start || !destination) {
+        alert("출발지와 목적지를 모두 입력해 주세요.");
+        return;
+      }
 
       try {
-        const res = await fetch('/api/generate', {
+        const response = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ start, destination, mode })
         });
 
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error);
+        const data = await response.json();
 
-        const { coords, routeGeometry, trafficLights } = data;
-
-        // 1. 출발지 / 목적지 마커
-        const m1 = L.marker([coords.start.lat, coords.start.lng]).addTo(map).bindPopup("출발지: " + start).openPopup();
-        const m2 = L.marker([coords.dest.lat, coords.dest.lng]).addTo(map).bindPopup("목적지: " + destination);
-        currentLayers.push(m1, m2);
-
-        // 2. OSRM 도로 경로 그리기
-        if (routeGeometry) {
-          const routeLayer = L.geoJSON(routeGeometry, {
-            style: { color: '#0066FF', weight: 5, opacity: 0.8 }
-          }).addTo(map);
-          currentLayers.push(routeLayer);
-          map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+        if (!data.success) {
+          alert("검색 실패: " + data.error);
+          return;
         }
 
-        // 3. 신호등 데이터 지도에 표시 🚦
-        if (trafficLights && trafficLights.length > 0) {
-          trafficLights.forEach(item => {
-            // API 응답의 위도/경도 필드명 확인 (lat/lng 또는 y/x)
-            const lat = item.lat || item.gpsY || item.latitude;
-            const lng = item.lng || item.gpsX || item.longitude;
+        // 기존 마커 및 경로 지우기
+        markers.forEach(m => map.removeLayer(m));
+        trafficMarkers.forEach(tm => map.removeLayer(tm));
+        markers = [];
+        trafficMarkers = [];
+        if (routeLayer) map.removeLayer(routeLayer);
+
+        // A. 출발지 / 목적지 마커 표시
+        const startMarker = L.marker([data.coords.start.lat, data.coords.start.lng]).addTo(map).bindPopup("<b>출발지:</b> " + start);
+        const destMarker = L.marker([data.coords.dest.lat, data.coords.dest.lng]).addTo(map).bindPopup("<b>목적지:</b> " + destination);
+        markers.push(startMarker, destMarker);
+
+        // B. OSRM 경로선 그리기
+        if (data.routeGeometry) {
+          routeLayer = L.geoJSON(data.routeGeometry, {
+            style: { color: '#007bff', weight: 6, opacity: 0.8 }
+          }).addTo(map);
+          map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+        } else {
+          map.setView([data.coords.dest.lat, data.coords.dest.lng], 14);
+        }
+
+        // C. 경찰청 신호등(교차로) 마커 그리기 🚦
+        if (data.trafficLights && data.trafficLights.length > 0) {
+          data.trafficLights.forEach(item => {
+            const lat = parseFloat(item.crsrdY || item.lat || item.y);
+            const lng = parseFloat(item.crsrdX || item.lng || item.x);
+            const name = item.crsrdNm || item.itstNm || '신호등 교차로';
 
             if (lat && lng) {
-              const trafficIcon = L.divIcon({
-                className: 'traffic-icon',
-                html: '🚦',
-                iconSize: [25, 25]
-              });
-              const tMarker = L.marker([lat, lng], { icon: trafficIcon })
-                .addTo(map)
-                .bindPopup(`<b>신호등 정보</b><br>${item.trafficLightNm || '신호등 위치'}`);
-              currentLayers.push(tMarker);
+              const tMarker = L.marker([lat, lng], {
+                title: name
+              }).addTo(map).bindPopup(`🚦 <b>${name}</b>`);
+              trafficMarkers.push(tMarker);
             }
           });
+          console.log(`신호등 마커 ${trafficMarkers.length}개 표시 완료`);
         }
 
       } catch (err) {
-        alert(err.message || "오류가 발생했습니다.");
+        console.error(err);
+        alert("서버 통신 중 오류가 발생했습니다.");
       }
     }
   </script>
