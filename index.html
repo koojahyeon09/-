@@ -14,11 +14,24 @@
       z-index: 1000; background: white; padding: 10px 16px; border-radius: 8px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex; gap: 8px;
     }
-    .search-box input, .search-box button {
+    .search-box input, .search-box select, .search-box button {
       padding: 8px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;
     }
     .search-box button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
-    .traffic-icon { font-size: 24px; text-align: center; line-height: 24px; }
+    
+    /* 선명하고 눈에 잘 띄는 신호등 마커 스타일 */
+    .traffic-badge {
+      background: #ffffff;
+      border: 2px solid #222;
+      border-radius: 50%;
+      font-size: 22px;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
   </style>
 </head>
 <body>
@@ -26,6 +39,10 @@
   <div class="search-box">
     <input type="text" id="startInput" placeholder="출발지" value="서현역">
     <input type="text" id="destInput" placeholder="목적지" value="분당대진고등학교">
+    <select id="modeSelect">
+      <option value="driving">차도 경로</option>
+      <option value="foot">보행자 경로</option>
+    </select>
     <button onclick="searchRoute()">경로 검색</button>
   </div>
 
@@ -34,18 +51,28 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const map = L.map('map').setView([37.3827, 127.1189], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
 
     let routeLayer = null;
-    let markers = [];
+    let mainMarkers = [];
+    let trafficMarkers = [];
 
-    const trafficSignalIcon = L.divIcon({
-      html: '🚦', className: 'traffic-icon', iconSize: [24, 24], iconAnchor: [12, 12]
+    // 🚦 커스텀 신호등 마커
+    const trafficIcon = L.divIcon({
+      html: '<div class="traffic-badge">🚦</div>',
+      className: '',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
     });
 
     async function searchRoute() {
       const start = document.getElementById('startInput').value;
       const destination = document.getElementById('destInput').value;
+      const mode = document.getElementById('modeSelect').value;
 
       if (!start || !destination) return alert("출발지와 목적지를 입력하세요.");
 
@@ -53,23 +80,25 @@
         const response = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ start, destination })
+          body: JSON.stringify({ start, destination, mode })
         });
 
         const data = await response.json();
         if (!data.success) return alert("에러: " + data.error);
 
-        // 이전 레이어 제거
-        markers.forEach(m => map.removeLayer(m));
-        markers = [];
+        // 이전 마커 초기화
+        mainMarkers.forEach(m => map.removeLayer(m));
+        trafficMarkers.forEach(tm => map.removeLayer(tm));
+        mainMarkers = [];
+        trafficMarkers = [];
         if (routeLayer) map.removeLayer(routeLayer);
 
-        // 1. 출발 / 도착 마커
-        const sMarker = L.marker([data.coords.start.lat, data.coords.start.lng]).addTo(map).bindPopup("출발지: " + start);
-        const dMarker = L.marker([data.coords.dest.lat, data.coords.dest.lng]).addTo(map).bindPopup("목적지: " + destination);
-        markers.push(sMarker, dMarker);
+        // 1. 출발지/도착지 마커
+        const sMarker = L.marker([data.coords.start.lat, data.coords.start.lng]).addTo(map).bindPopup("<b>출발지:</b> " + start);
+        const dMarker = L.marker([data.coords.dest.lat, data.coords.dest.lng]).addTo(map).bindPopup("<b>목적지:</b> " + destination);
+        mainMarkers.push(sMarker, dMarker);
 
-        // 2. 카카오 내비 기반 실제 도로 경로선 표시
+        // 2. 경로선그리기
         if (data.routeGeometry) {
           routeLayer = L.geoJSON(data.routeGeometry, {
             style: { color: '#0055ff', weight: 6, opacity: 0.8 }
@@ -77,20 +106,19 @@
           map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
         }
 
-        // 3. 신호등 마커 표시 및 에러 알림
+        // 3. 신호등 마커 렌더링 🚦
         if (data.trafficLights && data.trafficLights.length > 0) {
-          data.trafficLights.forEach(tl => {
-            const tMarker = L.marker([tl.lat, tl.lng], { icon: trafficSignalIcon })
-              .addTo(map).bindPopup(`<b>교차로:</b> ${tl.name}`);
-            markers.push(tMarker);
+          data.trafficLights.forEach((tl, idx) => {
+            const tMarker = L.marker([tl.lat, tl.lng], { icon: trafficIcon })
+              .addTo(map)
+              .bindPopup(`<b>🚦 신호등 교차로 #${idx + 1}</b><br>${tl.name}`);
+            trafficMarkers.push(tMarker);
           });
-        } else if (data.trafficError) {
-          alert(`신호등 데이터를 불러오지 못했습니다.\n이유: ${data.trafficError}`);
         }
 
       } catch (e) {
         console.error(e);
-        alert("서버 연결에 실패했습니다.");
+        alert("경로를 불러오는 중 문제가 발생했습니다.");
       }
     }
   </script>
