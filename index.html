@@ -12,29 +12,45 @@
     .search-box {
       position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
       z-index: 1000; background: white; padding: 10px 16px; border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex; gap: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25); display: flex; gap: 8px;
     }
     .search-box input, .search-box select, .search-box button {
       padding: 8px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;
     }
     .search-box button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
     
-    /* 실시간 신호등 마커 디자인 */
-    .traffic-badge {
+    /* 🚦 신호등 마커 레이아웃 보완 (글자가 잘리지 않도록 크기 및 폰트 고정) */
+    .traffic-badge-container {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       background: #ffffff;
       border: 2px solid #333;
-      border-radius: 20px;
-      padding: 2px 6px;
-      font-size: 12px;
-      font-weight: bold;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      border-radius: 16px;
+      padding: 4px 8px;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
       white-space: nowrap;
+      font-family: 'Pretendard', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      min-width: 95px;
+      text-align: center;
     }
-    .traffic-badge.green { border-color: #28a745; color: #28a745; }
-    .traffic-badge.red { border-color: #dc3545; color: #dc3545; }
+    .traffic-badge-container.green {
+      border-color: #28a745;
+      color: #28a745;
+      background-color: #f4fff6;
+    }
+    .traffic-badge-container.red {
+      border-color: #dc3545;
+      color: #dc3545;
+      background-color: #fff4f4;
+    }
+    .traffic-badge-container .sec-count {
+      margin-left: 3px;
+      font-size: 14px;
+      color: #111;
+    }
   </style>
 </head>
 <body>
@@ -62,25 +78,25 @@
 
     let routeLayer = null;
     let mainMarkers = [];
-    let trafficMarkersMap = new Map(); // 신호등 실시간 업데이트용 Map
+    let trafficMarkersMap = new Map();
     let timerInterval = null;
     let currentTrafficData = [];
 
-    // 신호등 상태 계산 함수 (60초 주기: 초록불 30초, 빨간불 30초)
+    // 신호 상태 실시간 계산 (60초 주기 시뮬레이션)
     function getSignalState(offset) {
       const nowSec = Math.floor(Date.now() / 1000);
-      const cycleTime = (nowSec + offset) % 60; // 0 ~ 59초
+      const cycleTime = (nowSec + offset) % 60; // 0 ~ 59초 사이 순환
       
       if (cycleTime < 30) {
         return {
           color: 'green',
-          statusText: '🟢 초록불',
+          statusText: '🟢 초록',
           remaining: 30 - cycleTime
         };
       } else {
         return {
           color: 'red',
-          statusText: '🔴 빨간불',
+          statusText: '🔴 빨간',
           remaining: 60 - cycleTime
         };
       }
@@ -111,12 +127,12 @@
         trafficMarkersMap.clear();
         if (routeLayer) map.removeLayer(routeLayer);
 
-        // 1. 출발지 / 목적지 마커
+        // 1. 출발지 / 도착지 마커
         const sMarker = L.marker([data.coords.start.lat, data.coords.start.lng]).addTo(map).bindPopup("<b>출발지:</b> " + start);
         const dMarker = L.marker([data.coords.dest.lat, data.coords.dest.lng]).addTo(map).bindPopup("<b>목적지:</b> " + destination);
         mainMarkers.push(sMarker, dMarker);
 
-        // 2. 경로선 (보행자/차도)
+        // 2. 경로 선그리기
         if (data.routeGeometry) {
           const lineColor = mode === 'foot' ? '#28a745' : '#0055ff';
           routeLayer = L.geoJSON(data.routeGeometry, {
@@ -125,14 +141,14 @@
           map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
         }
 
-        // 3. 실시간 신호등 마커 생성
+        // 3. 신호등 마커 객체 생성
         currentTrafficData = data.trafficLights || [];
         currentTrafficData.forEach(tl => {
           const marker = L.marker([tl.lat, tl.lng]).addTo(map);
           trafficMarkersMap.set(tl.id, marker);
         });
 
-        // 4. 1초마다 실시간으로 신호등 상태와 카운트다운 업데이트
+        // 4. 즉시 실행 후 1초마다 타이머 동작
         updateTrafficSignals();
         timerInterval = setInterval(updateTrafficSignals, 1000);
 
@@ -142,31 +158,36 @@
       }
     }
 
-    // 1초마다 모든 신호등 마커 화면 갱신
+    // 1초마다 모든 마커 아이콘 및 팝업 갱신
     function updateTrafficSignals() {
       currentTrafficData.forEach(tl => {
         const signal = getSignalState(tl.offset);
         const marker = trafficMarkersMap.get(tl.id);
 
         if (marker) {
+          // 마커 아이콘 HTML 렌더링 (숫자와 초가 명확히 나오도록 수정)
           const iconHtml = `
-            <div class="traffic-badge ${signal.color}">
-              ${signal.statusText} <b>${signal.remaining}초</b>
+            <div class="traffic-badge-container ${signal.color}">
+              <span>${signal.statusText}</span>
+              <span class="sec-count"><b>${signal.remaining}</b>초</span>
             </div>
           `;
           
           marker.setIcon(L.divIcon({
             html: iconHtml,
             className: '',
-            iconSize: [80, 24],
-            iconAnchor: [40, 12]
+            iconSize: [100, 32],
+            iconAnchor: [50, 16]
           }));
 
-          const nextColorText = signal.color === 'green' ? '빨간불' : '초록불';
+          // 마커 클릭 시 뜨는 팝업 설정
+          const nextColorText = signal.color === 'green' ? '🔴 빨간불' : '🟢 초록불';
           marker.bindPopup(`
-            <b>🚦 ${tl.name}</b><br>
-            현재 상태: <b>${signal.statusText}</b><br>
-            <b>${nextColorText}</b> 변환까지 <b>${signal.remaining}초</b> 남음
+            <div style="font-size: 13px; line-height: 1.5;">
+              <b>🚦 ${tl.name}</b><br>
+              현재: <b>${signal.statusText}불</b><br>
+              <b>${nextColorText}</b> 변환까지 <b>${signal.remaining}초</b> 남음
+            </div>
           `);
         }
       });
