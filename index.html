@@ -1,197 +1,289 @@
 <!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>실시간 신호등 지도 (Traffic Light Map)</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body, html { width: 100%; height: 100%; }
-    #map { width: 100%; height: 100vh; }
-    .search-box {
-      position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
-      z-index: 1000; background: white; padding: 10px 16px; border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.25); display: flex; gap: 8px;
-    }
-    .search-box input, .search-box select, .search-box button {
-      padding: 8px 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;
-    }
-    .search-box button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
-    
-    /* 🚦 신호등 마커 레이아웃 보완 (글자가 잘리지 않도록 크기 및 폰트 고정) */
-    .traffic-badge-container {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: #ffffff;
-      border: 2px solid #333;
-      border-radius: 16px;
-      padding: 4px 8px;
-      box-shadow: 0 3px 8px rgba(0,0,0,0.3);
-      white-space: nowrap;
-      font-family: 'Pretendard', sans-serif;
-      font-size: 13px;
-      font-weight: 700;
-      min-width: 95px;
-      text-align: center;
-    }
-    .traffic-badge-container.green {
-      border-color: #28a745;
-      color: #28a745;
-      background-color: #f4fff6;
-    }
-    .traffic-badge-container.red {
-      border-color: #dc3545;
-      color: #dc3545;
-      background-color: #fff4f4;
-    }
-    .traffic-badge-container .sec-count {
-      margin-left: 3px;
-      font-size: 14px;
-      color: #111;
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SignalFlow | Active Navigation</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=Geist:wght@500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 48;
+        }
+        .signal-glow-red {
+            box-shadow: 0 0 20px rgba(255, 78, 67, 0.4), inset 0 0 12px rgba(255, 78, 67, 0.6);
+        }
+        .glass-panel {
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        @keyframes pulse-soft {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .animate-pulse-soft {
+            animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-container": "#10b981",
+                        "on-background": "#d8e3fb",
+                        "primary-fixed": "#6ffbbe",
+                        "on-tertiary-container": "#00367a",
+                        "tertiary": "#adc6ff",
+                        "on-surface": "#d8e3fb",
+                        "on-primary-fixed": "#002113",
+                        "surface-tint": "#4edea3",
+                        "inverse-primary": "#006c49",
+                        "secondary-fixed-dim": "#ffb3ad",
+                        "secondary": "#ffb3ad",
+                        "on-error-container": "#ffdad6",
+                        "surface": "#081425",
+                        "on-primary": "#003824",
+                        "inverse-surface": "#d8e3fb",
+                        "surface-container-lowest": "#040e1f",
+                        "surface-container-low": "#111c2d",
+                        "on-secondary": "#68000a",
+                        "outline-variant": "#3c4a42",
+                        "primary-fixed-dim": "#4edea3",
+                        "inverse-on-surface": "#263143",
+                        "on-secondary-fixed-variant": "#930013",
+                        "outline": "#86948a",
+                        "surface-variant": "#2a3548",
+                        "on-surface-variant": "#bbcabf",
+                        "on-secondary-container": "#ffaea8",
+                        "tertiary-fixed": "#d8e2ff",
+                        "surface-container-highest": "#2a3548",
+                        "tertiary-container": "#71a1ff",
+                        "background": "#081425",
+                        "primary": "#4edea3",
+                        "on-tertiary": "#002e6a",
+                        "tertiary-fixed-dim": "#adc6ff",
+                        "error-container": "#93000a",
+                        "on-secondary-fixed": "#410004",
+                        "surface-bright": "#2f3a4c",
+                        "surface-dim": "#081425",
+                        "on-error": "#690005",
+                        "on-tertiary-fixed": "#001a42",
+                        "on-primary-container": "#00422b",
+                        "on-tertiary-fixed-variant": "#004395",
+                        "surface-container": "#152031",
+                        "on-primary-fixed-variant": "#005236",
+                        "secondary-container": "#a40217",
+                        "error": "#ffb4ab",
+                        "surface-container-high": "#1f2a3c",
+                        "secondary-fixed": "#ffdad7"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "8px",
+                        "sm": "12px",
+                        "gutter": "16px",
+                        "lg": "24px",
+                        "md": "16px",
+                        "xl": "32px",
+                        "safe-area-bottom": "34px",
+                        "base": "4px",
+                        "margin-mobile": "16px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "label-sm": ["Geist"],
+                        "label-lg": ["Geist"],
+                        "body-md": ["Inter"],
+                        "data-mono": ["Geist"],
+                        "display-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["18px", {"lineHeight": "26px", "fontWeight": "400"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "data-mono": ["16px", {"lineHeight": "20px", "fontWeight": "700"}],
+                        "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
     }
   </style>
 </head>
-<body>
+<body class="bg-background text-on-background font-body-md selection:bg-primary/30 overflow-hidden h-screen w-screen flex flex-col">
+<!-- NAVIGATION SHELL SUPPRESSED: This is a Task-Focused driving view -->
+<!-- Map Layer (Background) -->
+<div class="fixed inset-0 z-0 bg-surface-container-lowest">
+<div class="absolute inset-0 opacity-40 mix-blend-screen" data-alt="A high-contrast dark mode satellite navigation map view of a modern urban city grid. The streets are rendered in deep charcoal with neon cyan and primary green highlights for the active route. Subtle light trails and architectural silhouettes create a sense of depth and technical precision, maintaining a professional driving co-pilot aesthetic." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAE6KNrcKUYPevFy5Tq2lG1rpSozVU-_yWFXxkglqa9NSjs-fg-BPi7pQFHlmr9cs69fIc7ugQGVz0UxaDjWrJ-oLBzI5HaBBoFrGTCelwlS4Rh9vwRjgBotylVGp7kdTQjae3fRXCRnxFg9V62ivfHqs5VJ6zoixVF61N_79FNwATfRAgUow7qPF3ivpam9aZF3rUrOwbm1asy3kaNK4cHZ2cNsz8rapRCSwzT-XBf-4-qGFANaqj20VJ6FiUifbqWKeRRmb110vkm')">
+</div>
+<!-- Simulated Map Grid Overlays -->
+<div class="absolute inset-0 pointer-events-none opacity-10" style="background-size: 40px 40px; background-image: linear-gradient(to right, #86948a 1px, transparent 1px), linear-gradient(to bottom, #86948a 1px, transparent 1px);"></div>
+<svg class="absolute inset-0 w-full h-full z-10 pointer-events-none" preserveaspectratio="none" viewbox="0 0 400 800">
+<defs>
+<filter height="140%" id="route-glow" width="140%" x="-20%" y="-20%">
+<fegaussianblur result="blur" stddeviation="4"></fegaussianblur>
+<fecomposite in="SourceGraphic" in2="blur" operator="over"></fecomposite>
+</filter>
+</defs>
+<path class="opacity-90" d="M 200 800 L 200 600 L 280 520 L 280 400 L 120 240 L 120 0" fill="none" filter="url(#route-glow)" stroke="#4edea3" stroke-linecap="round" stroke-linejoin="round" stroke-width="6"></path>
+<path d="M 200 800 L 200 600 L 280 520 L 280 400 L 120 240 L 120 0" fill="none" stroke="#10b981" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg></div>
+<!-- Top Overlay: Next Signal & Lane Guidance -->
+<div class="relative z-20 px-gutter pt-4 w-full flex flex-col gap-sm pointer-events-none">
+<!-- Next Signal Card -->
+<div class="w-full flex justify-center">
+<div class="bg-surface-container/90 glass-panel rounded-xl border border-outline-variant/30 px-6 py-4 flex items-center justify-between gap-xl w-full max-w-2xl pointer-events-auto shadow-xl">
+<div class="flex items-center gap-md">
+<div class="flex flex-col gap-1 items-center bg-surface-container-highest p-1.5 rounded-full border border-outline-variant/50">
+<div class="w-4 h-4 rounded-full bg-error signal-glow-red"></div>
+<div class="w-4 h-4 rounded-full bg-surface-variant"></div>
+<div class="w-4 h-4 rounded-full bg-surface-variant"></div>
+</div>
+<div class="flex flex-col">
+<span class="text-on-surface-variant font-label-sm uppercase tracking-widest text-[10px]">Next Signal</span>
+<h2 class="text-error font-headline-md text-headline-md leading-none">RED LIGHT</h2>
+</div>
+</div>
+<div class="flex flex-col items-end">
+<span class="text-error font-display-lg text-[48px] font-bold leading-none tracking-tighter" id="countdown">24s</span>
+<span class="text-on-surface-variant font-label-sm">at Broadway St.</span>
+</div>
+</div>
+</div>
+<!-- Lane Guidance & Next Turn -->
+<div class="w-full flex justify-center">
+<div class="bg-surface-container/80 glass-panel rounded-lg px-gutter py-3 flex items-center gap-lg border border-outline-variant/20 shadow-lg pointer-events-auto">
+<div class="bg-primary-container p-2 rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-on-primary-container text-[32px]">turn_right</span>
+</div>
+<div class="flex flex-col">
+<span class="text-primary font-headline-sm text-headline-sm leading-tight">450m • Madison Ave</span>
+<div class="flex items-center gap-1.5 mt-1">
+<span class="material-symbols-outlined text-on-surface-variant text-sm" style="font-variation-settings: 'FILL' 1;">arrow_upward</span>
+<span class="material-symbols-outlined text-on-surface-variant text-sm" style="font-variation-settings: 'FILL' 1;">arrow_upward</span>
+<div class="bg-primary/20 p-0.5 rounded border border-primary/30 flex items-center">
+<span class="material-symbols-outlined text-primary text-sm" style="font-variation-settings: 'FILL' 1;">turn_right</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant/40 text-sm">arrow_upward</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Center Viewport (Floating Controls) -->
+<div class="flex-grow relative z-10">
+<!-- Recenter Button -->
+<div class="absolute right-gutter bottom-gutter flex flex-col gap-md items-end">
+<button class="w-14 h-14 bg-surface-container-high rounded-full flex items-center justify-center shadow-lg border border-outline-variant/30 active:scale-95 transition-all text-primary">
+<span class="material-symbols-outlined text-[28px]">my_location</span>
+</button>
+<button class="w-14 h-14 bg-surface-container-high rounded-full flex items-center justify-center shadow-lg border border-outline-variant/30 active:scale-95 transition-all text-secondary">
+<span class="material-symbols-outlined text-[28px]">report</span>
+</button>
+</div>
+<!-- Speed & Limit Overlay -->
+<div class="absolute left-gutter bottom-gutter flex flex-col items-start gap-sm">
+<div class="bg-white rounded-full border-4 border-secondary-container p-4 w-16 h-16 flex items-center justify-center shadow-xl">
+<span class="text-surface font-display-lg text-[20px] font-bold">60</span>
+</div>
+<div class="bg-surface-container/90 glass-panel p-6 rounded-2xl border border-outline-variant/30 shadow-2xl flex flex-col items-center min-w-[120px]">
+<span class="font-display-lg text-[56px] text-on-surface font-black leading-none" id="current-speed">58</span>
+<span class="font-label-sm text-on-surface-variant uppercase tracking-widest mt-1">KM/H</span>
+</div>
+</div>
+</div>
+<!-- Bottom Dashboard: Arrival Stats -->
+<div class="relative z-20 px-gutter pb-safe-area-bottom w-full">
+<div class="bg-surface-container-low/95 glass-panel rounded-t-3xl border-t border-x border-outline-variant/30 w-full shadow-[0_-12px_24px_rgba(0,0,0,0.4)]">
+<div class="flex flex-row items-center justify-between px-8 py-6 max-w-4xl mx-auto">
+<div class="flex flex-col">
+<span class="font-label-sm text-on-surface-variant uppercase">Arrival</span>
+<div class="flex items-baseline gap-2">
+<span class="font-headline-md text-[28px] text-primary">16:42</span>
+<span class="text-on-surface-variant font-body-md text-sm">PM</span>
+</div>
+</div>
+<div class="h-12 w-[1px] bg-outline-variant/30"></div>
+<div class="flex flex-col items-center">
+<span class="font-label-sm text-on-surface-variant uppercase">Remaining</span>
+<div class="flex items-baseline gap-1">
+<span class="font-headline-md text-[28px] text-on-surface">12</span>
+<span class="text-on-surface-variant font-body-md">min</span>
+</div>
+</div>
+<div class="h-12 w-[1px] bg-outline-variant/30"></div>
+<div class="flex flex-col items-end">
+<span class="font-label-sm text-on-surface-variant uppercase">Distance</span>
+<div class="flex items-baseline gap-1">
+<span class="font-headline-md text-[28px] text-on-surface">8.4</span>
+<span class="text-on-surface-variant font-body-md">km</span>
+</div>
+</div>
+<div class="hidden sm:block h-12 w-[1px] bg-outline-variant/30"></div>
+<button class="bg-secondary-container text-on-secondary-fixed hover:brightness-110 active:scale-95 transition-all px-8 py-3 rounded-full font-label-lg uppercase hidden sm:flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">close</span>
+                    Exit
+                </button>
+</div>
+<!-- Visual Progress Bar -->
+<div class="w-full h-1.5 bg-surface-variant/40 relative overflow-hidden">
+<div class="absolute left-0 top-0 h-full bg-primary w-[68%] transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(78,222,163,0.5)]"></div>
+</div>
+</div>
+</div>
+<!-- Micro-interactions Script -->
+<script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Simulated Countdown
+            let seconds = 24;
+            const countdownEl = document.getElementById('countdown');
+            const interval = setInterval(() => {
+                seconds--;
+                if (seconds >= 0) {
+                    countdownEl.innerText = `${seconds}s`;
+                    if (seconds <= 5) {
+                        countdownEl.classList.add('animate-pulse-soft');
+                    }
+                } else {
+                    clearInterval(interval);
+                }
+            }, 1000);
 
-  <div class="search-box">
-    <input type="text" id="startInput" placeholder="출발지" value="서현역">
-    <input type="text" id="destInput" placeholder="목적지" value="분당대진고등학교">
-    <select id="modeSelect">
-      <option value="driving">🚗 차도 경로</option>
-      <option value="foot">🚶 보행자 경로</option>
-    </select>
-    <button onclick="searchRoute()">경로 검색</button>
-  </div>
-
-  <div id="map"></div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
-    const map = L.map('map').setView([37.3827, 127.1189], 14);
-    
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
-
-    let routeLayer = null;
-    let mainMarkers = [];
-    let trafficMarkersMap = new Map();
-    let timerInterval = null;
-    let currentTrafficData = [];
-
-    // 신호 상태 실시간 계산 (60초 주기 시뮬레이션)
-    function getSignalState(offset) {
-      const nowSec = Math.floor(Date.now() / 1000);
-      const cycleTime = (nowSec + offset) % 60; // 0 ~ 59초 사이 순환
-      
-      if (cycleTime < 30) {
-        return {
-          color: 'green',
-          statusText: '🟢 초록',
-          remaining: 30 - cycleTime
-        };
-      } else {
-        return {
-          color: 'red',
-          statusText: '🔴 빨간',
-          remaining: 60 - cycleTime
-        };
-      }
-    }
-
-    async function searchRoute() {
-      const start = document.getElementById('startInput').value;
-      const destination = document.getElementById('destInput').value;
-      const mode = document.getElementById('modeSelect').value;
-
-      if (!start || !destination) return alert("출발지와 목적지를 입력하세요.");
-
-      try {
-        const response = await fetch('/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ start, destination, mode })
+            // Simulated Speed Variation
+            const speedEl = document.getElementById('current-speed');
+            setInterval(() => {
+                let current = parseInt(speedEl.innerText);
+                let change = Math.floor(Math.random() * 3) - 1; // -1, 0, or 1
+                let next = current + change;
+                if (next > 55 && next < 62) {
+                    speedEl.innerText = next;
+                    if (next > 60) {
+                        speedEl.classList.remove('text-on-surface');
+                        speedEl.classList.add('text-error');
+                    } else {
+                        speedEl.classList.remove('text-error');
+                        speedEl.classList.add('text-on-surface');
+                    }
+                }
+            }, 2000);
         });
-
-        const data = await response.json();
-        if (!data.success) return alert("에러: " + data.error);
-
-        // 이전 타이머 및 마커 정리
-        if (timerInterval) clearInterval(timerInterval);
-        mainMarkers.forEach(m => map.removeLayer(m));
-        trafficMarkersMap.forEach(m => map.removeLayer(m));
-        mainMarkers = [];
-        trafficMarkersMap.clear();
-        if (routeLayer) map.removeLayer(routeLayer);
-
-        // 1. 출발지 / 도착지 마커
-        const sMarker = L.marker([data.coords.start.lat, data.coords.start.lng]).addTo(map).bindPopup("<b>출발지:</b> " + start);
-        const dMarker = L.marker([data.coords.dest.lat, data.coords.dest.lng]).addTo(map).bindPopup("<b>목적지:</b> " + destination);
-        mainMarkers.push(sMarker, dMarker);
-
-        // 2. 경로 선그리기
-        if (data.routeGeometry) {
-          const lineColor = mode === 'foot' ? '#28a745' : '#0055ff';
-          routeLayer = L.geoJSON(data.routeGeometry, {
-            style: { color: lineColor, weight: 6, opacity: 0.8 }
-          }).addTo(map);
-          map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
-        }
-
-        // 3. 신호등 마커 객체 생성
-        currentTrafficData = data.trafficLights || [];
-        currentTrafficData.forEach(tl => {
-          const marker = L.marker([tl.lat, tl.lng]).addTo(map);
-          trafficMarkersMap.set(tl.id, marker);
-        });
-
-        // 4. 즉시 실행 후 1초마다 타이머 동작
-        updateTrafficSignals();
-        timerInterval = setInterval(updateTrafficSignals, 1000);
-
-      } catch (e) {
-        console.error(e);
-        alert("경로를 불러오는 중 문제가 발생했습니다.");
-      }
-    }
-
-    // 1초마다 모든 마커 아이콘 및 팝업 갱신
-    function updateTrafficSignals() {
-      currentTrafficData.forEach(tl => {
-        const signal = getSignalState(tl.offset);
-        const marker = trafficMarkersMap.get(tl.id);
-
-        if (marker) {
-          // 마커 아이콘 HTML 렌더링 (숫자와 초가 명확히 나오도록 수정)
-          const iconHtml = `
-            <div class="traffic-badge-container ${signal.color}">
-              <span>${signal.statusText}</span>
-              <span class="sec-count"><b>${signal.remaining}</b>초</span>
-            </div>
-          `;
-          
-          marker.setIcon(L.divIcon({
-            html: iconHtml,
-            className: '',
-            iconSize: [100, 32],
-            iconAnchor: [50, 16]
-          }));
-
-          // 마커 클릭 시 뜨는 팝업 설정
-          const nextColorText = signal.color === 'green' ? '🔴 빨간불' : '🟢 초록불';
-          marker.bindPopup(`
-            <div style="font-size: 13px; line-height: 1.5;">
-              <b>🚦 ${tl.name}</b><br>
-              현재: <b>${signal.statusText}불</b><br>
-              <b>${nextColorText}</b> 변환까지 <b>${signal.remaining}초</b> 남음
-            </div>
-          `);
-        }
-      });
-    }
-  </script>
-</body>
-</html>
+    </script>
+</body></html>
