@@ -7,14 +7,17 @@
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    body { margin: 0; padding: 0; font-family: sans-serif; }
+    body { margin: 0; padding: 0; font-family: 'Noto Sans KR', sans-serif; }
     #search-bar {
-      position: absolute; top: 10px; left: 50px; z-index: 1000;
-      background: white; padding: 10px; border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      position: absolute; top: 15px; left: 50px; z-index: 1000;
+      background: white; padding: 15px; border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; gap: 8px; flex-wrap: wrap;
     }
     #map { width: 100vw; height: 100vh; }
-    input, button { padding: 8px; margin-right: 5px; }
+    input, select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    button { background-color: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
+    button:hover { background-color: #0056b3; }
+    button:disabled { background-color: #aaa; }
   </style>
 </head>
 <body>
@@ -22,7 +25,11 @@
   <div id="search-bar">
     <input type="text" id="startInput" placeholder="출발지 (예: 서현역)">
     <input type="text" id="destInput" placeholder="목적지 (예: 분당중앙공원)">
-    <button onclick="findRoute()">경로 검색</button>
+    <select id="modeSelect">
+      <option value="driving">자동차 경로</option>
+      <option value="foot">보행자 경로</option>
+    </select>
+    <button id="searchBtn" onclick="findRoute()">경로 검색</button>
   </div>
 
   <div id="map"></div>
@@ -30,26 +37,40 @@
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // 1. Leaflet 지도 초기화 (기본 서울/경기 중심)
+    // 1. 지도 초기화
     const map = L.map('map').setView([37.3827, 127.1189], 14);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    let currentRouteLayer = null;
+    // 이전 그려진 레이어(경로/마커) 추적용 배열
+    let mapLayers = [];
+
+    // 지도 요소 초기화 함수
+    function clearMap() {
+      mapLayers.forEach(layer => map.removeLayer(layer));
+      mapLayers = [];
+    }
 
     async function findRoute() {
-      const start = document.getElementById('startInput').value;
-      const destination = document.getElementById('destInput').value;
+      const start = document.getElementById('startInput').value.trim();
+      const destination = document.getElementById('destInput').value.trim();
+      const mode = document.getElementById('modeSelect').value;
+      const btn = document.getElementById('searchBtn');
 
       if (!start || !destination) {
         alert("출발지와 목적지를 모두 입력해 주세요.");
         return;
       }
 
+      // 검색 중 버튼 비활성화
+      btn.disabled = true;
+      btn.innerText = "검색 중...";
+      clearMap();
+
       try {
-        // 백엔드 API 호출 (Gemini 좌표 + 신호등 데이터)
+        // 1. 백엔드 API (Gemini 좌표 변환 + 신호등)
         const res = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -57,34 +78,66 @@
         });
 
         const data = await res.json();
-        if (!data.success) throw new Error("좌표 검색 실패");
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "좌표를 찾을 수 없습니다.");
+        }
 
         const { start: startCoord, dest: destCoord } = data.coords;
 
-        // 마커 표시
-        L.marker([startCoord.lat, startCoord.lng]).addTo(map).bindPopup("출발지: " + start).openPopup();
-        L.marker([destCoord.lat, destCoord.lng]).addTo(map).bindPopup("목적지: " + destination);
+        // 2. 출발지/목적지 마커 생성
+        const startMarker = L.marker([startCoord.lat, startCoord.lng])
+          .addTo(map).bindPopup(`<b>출발지:</b> ${start}`).openPopup();
+        const destMarker = L.marker([destCoord.lat, destCoord.lng])
+          .addTo(map).bindPopup(`<b>목적지:</b> ${destination}`);
+        
+        mapLayers.push(startMarker, destMarker);
 
-        // OSRM API 호출 (인증키 필요 없는 보행자/도로 경로 계산)
-        const osrmUrl = `https://router.project-osrm.org/route/v1/foot/${startCoord.lng},${startCoord.lat};${destCoord.lng},${destCoord.lat}?overview=full&geometries=geojson`;
+        // 3. OSRM 경로 API 호출 (완벽 보완 레이어)
+        // driving(차도) 또는 foot(보행자) 지원
+        const osrmUrl = `https://router.project-osrm.org/route/v1/${mode}/${startCoord.lng},${startCoord.lat};${destCoord.lng},${destCoord.lat}?overview=full&geometries=geojson&steps=true`;
+        
         const routeRes = await fetch(osrmUrl);
         const routeData = await routeRes.json();
 
-        if (routeData.routes && routeData.routes.length > 0) {
-          if (currentRouteLayer) map.removeLayer(currentRouteLayer);
-
-          // OSRM 경로 지도에 그리기
-          currentRouteLayer = L.geoJSON(routeData.routes[0].geometry, {
-            style: { color: 'blue', weight: 5, opacity: 0.7 }
+        if (routeData.code === 'Ok' && routeData.routes && routeData.routes.length > 0) {
+          // OSRM GeoJSON 경로 그리기
+          const routeLayer = L.geoJSON(routeData.routes[0].geometry, {
+            style: { 
+              color: mode === 'driving' ? '#0066FF' : '#FF5500', 
+              weight: 6, 
+              opacity: 0.8 
+            }
           }).addTo(map);
 
-          // 경로 영역에 맞게 지도 화면 맞춤
-          map.fitBounds(currentRouteLayer.getBounds());
+          mapLayers.push(routeLayer);
+
+          // 지도 화면을 경로 전체가 한눈에 보이도록 자동으로 맞춤
+          map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+
+          // 거리/시간 정보 계산 및 안내
+          const distanceKm = (routeData.routes[0].distance / 1000).toFixed(1);
+          const durationMin = Math.round(routeData.routes[0].duration / 60);
+          console.log(`총 거리: ${distanceKm}km, 예상 소요 시간: ${durationMin}분`);
+
+        } else {
+          alert("두 지점 간의 도로 경로를 계산할 수 없습니다. (직선으로 표시합니다)");
+          // OSRM 실패 시 안전장치: 두 점 사이에 직선 점선 그리기
+          const polyline = L.polyline([
+            [startCoord.lat, startCoord.lng],
+            [destCoord.lat, destCoord.lng]
+          ], { color: 'gray', dashArray: '5, 10' }).addTo(map);
+          
+          mapLayers.push(polyline);
+          map.fitBounds(polyline.getBounds());
         }
 
       } catch (err) {
         console.error(err);
-        alert("경로를 찾는 도중 오류가 발생했습니다.");
+        alert(`오류: ${err.message}`);
+      } finally {
+        // 버튼 복구
+        btn.disabled = false;
+        btn.innerText = "경로 검색";
       }
     }
   </script>
