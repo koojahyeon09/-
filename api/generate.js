@@ -6,9 +6,9 @@ export default async function handler(req, res) {
   const { start, destination } = req.body;
 
   try {
-    // 1. Gemini API로 출발지/목적지 이름 -> 위도/경도 좌표 변환
+    // 1. Gemini API 호출
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -28,20 +28,34 @@ export default async function handler(req, res) {
     );
 
     const geminiData = await geminiRes.json();
-    const coords = JSON.parse(geminiData.candidates[0].content.parts[0].text);
 
-    // 2. 공공데이터포털 실시간 신호등 API 호출 (예시 파라미터)
-    // * 참고: 선택하신 공공데이터 API의 요청 URL 포맷에 맞게 serviceKey로 전달됩니다.
-    const trafficRes = await fetch(
-      `https://apis.data.go.kr/1613000/TrafficLightInfoService/getTrafficLightList?serviceKey=${process.env.TRAFFIC_LIGHT_API_KEY}&type=json&pageNo=1&numOfRows=100`
-    );
-    
-    let trafficData = null;
-    if (trafficRes.ok) {
-      trafficData = await trafficRes.json();
+    // 🚨 Gemini API 응답 에러 체크 (추가된 부분)
+    if (!geminiRes.ok || !geminiData.candidates || !geminiData.candidates[0]) {
+      console.error("Gemini API Error Detail:", JSON.stringify(geminiData));
+      return res.status(500).json({ 
+        error: "Gemini API 호출 실패. API 키를 확인해 주세요.",
+        details: geminiData 
+      });
     }
 
-    // 3. 좌표 및 신호등 데이터 전달
+    const coords = JSON.parse(geminiData.candidates[0].content.parts[0].text);
+
+    // 2. 공공데이터 API 호출
+    let trafficData = null;
+    try {
+      if (process.env.TRAFFIC_LIGHT_API_KEY) {
+        const trafficRes = await fetch(
+          `https://apis.data.go.kr/1613000/TrafficLightInfoService/getTrafficLightList?serviceKey=${process.env.TRAFFIC_LIGHT_API_KEY}&type=json&pageNo=1&numOfRows=100`
+        );
+        if (trafficRes.ok) {
+          trafficData = await trafficRes.json();
+        }
+      }
+    } catch (tErr) {
+      console.warn("신호등 데이터 수집 실패(무시하고 진행):", tErr);
+    }
+
+    // 3. 결과 반환
     return res.status(200).json({
       success: true,
       coords: coords,
@@ -49,7 +63,7 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Server Handler Error:", error);
     return res.status(500).json({ error: '데이터 처리 중 오류가 발생했습니다.' });
   }
 }
