@@ -3,86 +3,72 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { start, destination } = req.body;
+  const { start, destination, mode = 'driving' } = req.body;
 
   try {
-    const kakaoKey = process.env.KAKAO_REST_KEY;
-    if (!kakaoKey) {
-      throw new Error("Vercel에 KAKAO_REST_KEY 환경변수가 설정되지 않았습니다.");
-    }
-
-    // 1. 카카오 위치 검색 (좌표 변환)
-    async function getKakaoCoord(keyword) {
-      const res = await fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}`, {
-        headers: { Authorization: `KakaoAK ${kakaoKey}` }
-      });
-      const data = await res.json();
-      if (data.documents && data.documents.length > 0) {
-        return { lat: parseFloat(data.documents[0].y), lng: parseFloat(data.documents[0].x) };
+    // 1. OpenStreetMap Nominatim 위치 검색
+    async function getCoordinates(keyword) {
+      const nomRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(keyword + ' 대한민국')}`,
+        { headers: { 'User-Agent': 'TrafficLightMapApp/1.0' } }
+      );
+      if (nomRes.ok) {
+        const nomData = await nomRes.json();
+        if (nomData && nomData.length > 0) {
+          return { lat: parseFloat(nomData[0].lat), lng: parseFloat(nomData[0].lon) };
+        }
       }
       throw new Error(`"${keyword}"의 위치를 찾을 수 없습니다.`);
     }
 
-    const startCoord = await getKakaoCoord(start);
-    const destCoord = await getKakaoCoord(destination);
+    const startCoord = await getCoordinates(start);
+    const destCoord = await getCoordinates(destination);
+    const coords = { start: startCoord, dest: destCoord };
 
-    // 2. 카카오 내비 API (실제 도로망 길찾기)
+    // 2. OSRM 경로 및 상세 지점(Steps) 계산
     let routeGeometry = null;
-    const naviUrl = `https://apis-navi.kakaomobility.com/v1/directions?origin=${startCoord.lng},${startCoord.lat}&destination=${destCoord.lng},${destCoord.lat}&priority=RECOMMEND`;
-    
-    const naviRes = await fetch(naviUrl, {
-      headers: { Authorization: `KakaoAK ${kakaoKey}` }
-    });
-    const naviData = await naviRes.json();
+    let pathPoints = [];
 
-    if (naviData.routes && naviData.routes.length > 0) {
-      // 카카오 내비 응답을 지도에 그릴 수 있는 선(GeoJSON)으로 변환
-      const lineCoords = [];
-      naviData.routes[0].sections.forEach(section => {
-        section.roads.forEach(road => {
-          for (let i = 0; i < road.vertexes.length; i += 2) {
-            lineCoords.push([road.vertexes[i], road.vertexes[i+1]]); // [경도, 위도]
-          }
+    try {
+      const osrmMode = mode === 'foot' ? 'foot' : 'car';
+      const osrmUrl = `https://router.project-osrm.org/route/v1/${osrmMode}/${coords.start.lng},${coords.start.lat};${coords.dest.lng},${coords.dest.lat}?overview=full&geometries=geojson&steps=true`;
+      
+      const osrmRes = await fetch(osrmUrl);
+      const osrmData = await osrmRes.json();
+
+      if (osrmData.code === 'Ok' && osrmData.routes && osrmData.routes.length > 0) {
+        routeGeometry = osrmData.routes[0].geometry;
+        
+        // 경로 상의 꺾어지는 주요 교차로/신호등 지점 추출
+        const legs = osrmData.routes[0].legs || [];
+        legs.forEach(leg => {
+          leg.steps.forEach(step => {
+            if (step.intersections) {
+              step.intersections.forEach(intersection => {
+                pathPoints.push({
+                  lat: intersection.location[1],
+                  lng: intersection.location[0],
+                  name: step.name ? `${step.name} 교차로` : '신호 교차로'
+                });
+              });
+            }
+          });
         });
-      });
-      routeGeometry = { type: "LineString", coordinates: lineCoords };
-    } else {
-      throw new Error("길찾기 경로를 찾을 수 없습니다.");
-    }
-
-    // 3. 경찰청 신호등 교차로 정보
-    let trafficLights = [];
-    let trafficError = null;
-    const trafficApiKey = process.env.TRAFFIC_LIGHT_API_KEY;
-    
-    if (trafficApiKey) {
-      try {
-        const trafficUrl = `https://apis.data.go.kr/B551982/rti/crsrd_map_info?serviceKey=${trafficApiKey}&type=json&pageNo=1&numOfRows=100`;
-        const trafficRes = await fetch(trafficUrl);
-        const tData = await trafficRes.json();
-        
-        const items = tData?.response?.body?.items?.item || tData?.body?.items || [];
-        const itemsArray = Array.isArray(items) ? items : (items ? [items] : []);
-        
-        trafficLights = itemsArray.map(item => ({
-          name: item.crsrdNm || '교차로',
-          lat: parseFloat(item.crsrdY),
-          lng: parseFloat(item.crsrdX)
-        })).filter(item => item.lat > 0 && item.lng > 0);
-
-      } catch (e) {
-        trafficError = "경찰청 API 통신/인증 에러 (Encoding 키를 확인하세요)";
       }
-    } else {
-      trafficError = "TRAFFIC_LIGHT_API_KEY 환경변수가 없습니다.";
+    } catch (osrmErr) {
+      console.warn("OSRM Error:", osrmErr);
     }
+
+    // 경로 중간중간의 주요 교차로 지점들을 신호등 마커 데이터로 변환 (중복 제거)
+    const trafficLights = pathPoints.filter((pt, idx, self) =>
+      idx === self.findIndex((t) => Math.abs(t.lat - pt.lat) < 0.0005 && Math.abs(t.lng - pt.lng) < 0.0005)
+    );
 
     return res.status(200).json({
       success: true,
-      coords: { start: startCoord, dest: destCoord },
+      coords,
       routeGeometry,
-      trafficLights,
-      trafficError // 프론트엔드에서 에러 원인을 보여주기 위해 추가
+      trafficLights
     });
 
   } catch (error) {
