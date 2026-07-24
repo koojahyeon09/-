@@ -1,289 +1,309 @@
 <!DOCTYPE html>
+<html class="dark" lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>SignalFlow | 실시간 신호등 네비게이션</title>
+  
+  <!-- Tailwind CSS & Google Fonts -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Geist:wght@500;600;700&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  
+  <!-- Leaflet Map CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-<html class="dark" lang="en"><head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>SignalFlow | Active Navigation</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=Geist:wght@500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
-<style>
-        .material-symbols-outlined {
-            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 48;
-        }
-        .signal-glow-red {
-            box-shadow: 0 0 20px rgba(255, 78, 67, 0.4), inset 0 0 12px rgba(255, 78, 67, 0.6);
-        }
-        .glass-panel {
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-        }
-        @keyframes pulse-soft {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-        .animate-pulse-soft {
-            animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-    </style>
-<script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    "colors": {
-                        "primary-container": "#10b981",
-                        "on-background": "#d8e3fb",
-                        "primary-fixed": "#6ffbbe",
-                        "on-tertiary-container": "#00367a",
-                        "tertiary": "#adc6ff",
-                        "on-surface": "#d8e3fb",
-                        "on-primary-fixed": "#002113",
-                        "surface-tint": "#4edea3",
-                        "inverse-primary": "#006c49",
-                        "secondary-fixed-dim": "#ffb3ad",
-                        "secondary": "#ffb3ad",
-                        "on-error-container": "#ffdad6",
-                        "surface": "#081425",
-                        "on-primary": "#003824",
-                        "inverse-surface": "#d8e3fb",
-                        "surface-container-lowest": "#040e1f",
-                        "surface-container-low": "#111c2d",
-                        "on-secondary": "#68000a",
-                        "outline-variant": "#3c4a42",
-                        "primary-fixed-dim": "#4edea3",
-                        "inverse-on-surface": "#263143",
-                        "on-secondary-fixed-variant": "#930013",
-                        "outline": "#86948a",
-                        "surface-variant": "#2a3548",
-                        "on-surface-variant": "#bbcabf",
-                        "on-secondary-container": "#ffaea8",
-                        "tertiary-fixed": "#d8e2ff",
-                        "surface-container-highest": "#2a3548",
-                        "tertiary-container": "#71a1ff",
-                        "background": "#081425",
-                        "primary": "#4edea3",
-                        "on-tertiary": "#002e6a",
-                        "tertiary-fixed-dim": "#adc6ff",
-                        "error-container": "#93000a",
-                        "on-secondary-fixed": "#410004",
-                        "surface-bright": "#2f3a4c",
-                        "surface-dim": "#081425",
-                        "on-error": "#690005",
-                        "on-tertiary-fixed": "#001a42",
-                        "on-primary-container": "#00422b",
-                        "on-tertiary-fixed-variant": "#004395",
-                        "surface-container": "#152031",
-                        "on-primary-fixed-variant": "#005236",
-                        "secondary-container": "#a40217",
-                        "error": "#ffb4ab",
-                        "surface-container-high": "#1f2a3c",
-                        "secondary-fixed": "#ffdad7"
-                    },
-                    "borderRadius": {
-                        "DEFAULT": "0.25rem",
-                        "lg": "0.5rem",
-                        "xl": "0.75rem",
-                        "full": "9999px"
-                    },
-                    "spacing": {
-                        "xs": "8px",
-                        "sm": "12px",
-                        "gutter": "16px",
-                        "lg": "24px",
-                        "md": "16px",
-                        "xl": "32px",
-                        "safe-area-bottom": "34px",
-                        "base": "4px",
-                        "margin-mobile": "16px"
-                    },
-                    "fontFamily": {
-                        "body-lg": ["Inter"],
-                        "headline-sm": ["Inter"],
-                        "headline-md": ["Inter"],
-                        "label-sm": ["Geist"],
-                        "label-lg": ["Geist"],
-                        "body-md": ["Inter"],
-                        "data-mono": ["Geist"],
-                        "display-lg": ["Inter"]
-                    },
-                    "fontSize": {
-                        "body-lg": ["18px", {"lineHeight": "26px", "fontWeight": "400"}],
-                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
-                        "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
-                        "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
-                        "label-lg": ["14px", {"lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "600"}],
-                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
-                        "data-mono": ["16px", {"lineHeight": "20px", "fontWeight": "700"}],
-                        "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}]
-                    }
-                },
-            },
-        }
-    </script>
-<style>
-    body {
-      min-height: max(884px, 100dvh);
+  <style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 48;
     }
+    .glass-panel {
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+    /* Leaflet 지도 다크모드 타일 필터 */
+    .dark-tiles .leaflet-tile {
+      filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3);
+    }
+    /* 커스텀 신호등 마커 스타일 */
+    .signal-marker-badge {
+      background: rgba(15, 23, 42, 0.9);
+      border: 2px solid #334155;
+      border-radius: 9999px;
+      padding: 4px 10px;
+      color: #fff;
+      font-family: 'Geist', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .signal-marker-badge.green { border-color: #10b981; color: #34d399; }
+    .signal-marker-badge.red { border-color: #ef4444; color: #f87171; }
   </style>
-</head>
-<body class="bg-background text-on-background font-body-md selection:bg-primary/30 overflow-hidden h-screen w-screen flex flex-col">
-<!-- NAVIGATION SHELL SUPPRESSED: This is a Task-Focused driving view -->
-<!-- Map Layer (Background) -->
-<div class="fixed inset-0 z-0 bg-surface-container-lowest">
-<div class="absolute inset-0 opacity-40 mix-blend-screen" data-alt="A high-contrast dark mode satellite navigation map view of a modern urban city grid. The streets are rendered in deep charcoal with neon cyan and primary green highlights for the active route. Subtle light trails and architectural silhouettes create a sense of depth and technical precision, maintaining a professional driving co-pilot aesthetic." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAE6KNrcKUYPevFy5Tq2lG1rpSozVU-_yWFXxkglqa9NSjs-fg-BPi7pQFHlmr9cs69fIc7ugQGVz0UxaDjWrJ-oLBzI5HaBBoFrGTCelwlS4Rh9vwRjgBotylVGp7kdTQjae3fRXCRnxFg9V62ivfHqs5VJ6zoixVF61N_79FNwATfRAgUow7qPF3ivpam9aZF3rUrOwbm1asy3kaNK4cHZ2cNsz8rapRCSwzT-XBf-4-qGFANaqj20VJ6FiUifbqWKeRRmb110vkm')">
-</div>
-<!-- Simulated Map Grid Overlays -->
-<div class="absolute inset-0 pointer-events-none opacity-10" style="background-size: 40px 40px; background-image: linear-gradient(to right, #86948a 1px, transparent 1px), linear-gradient(to bottom, #86948a 1px, transparent 1px);"></div>
-<svg class="absolute inset-0 w-full h-full z-10 pointer-events-none" preserveaspectratio="none" viewbox="0 0 400 800">
-<defs>
-<filter height="140%" id="route-glow" width="140%" x="-20%" y="-20%">
-<fegaussianblur result="blur" stddeviation="4"></fegaussianblur>
-<fecomposite in="SourceGraphic" in2="blur" operator="over"></fecomposite>
-</filter>
-</defs>
-<path class="opacity-90" d="M 200 800 L 200 600 L 280 520 L 280 400 L 120 240 L 120 0" fill="none" filter="url(#route-glow)" stroke="#4edea3" stroke-linecap="round" stroke-linejoin="round" stroke-width="6"></path>
-<path d="M 200 800 L 200 600 L 280 520 L 280 400 L 120 240 L 120 0" fill="none" stroke="#10b981" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
-</svg></div>
-<!-- Top Overlay: Next Signal & Lane Guidance -->
-<div class="relative z-20 px-gutter pt-4 w-full flex flex-col gap-sm pointer-events-none">
-<!-- Next Signal Card -->
-<div class="w-full flex justify-center">
-<div class="bg-surface-container/90 glass-panel rounded-xl border border-outline-variant/30 px-6 py-4 flex items-center justify-between gap-xl w-full max-w-2xl pointer-events-auto shadow-xl">
-<div class="flex items-center gap-md">
-<div class="flex flex-col gap-1 items-center bg-surface-container-highest p-1.5 rounded-full border border-outline-variant/50">
-<div class="w-4 h-4 rounded-full bg-error signal-glow-red"></div>
-<div class="w-4 h-4 rounded-full bg-surface-variant"></div>
-<div class="w-4 h-4 rounded-full bg-surface-variant"></div>
-</div>
-<div class="flex flex-col">
-<span class="text-on-surface-variant font-label-sm uppercase tracking-widest text-[10px]">Next Signal</span>
-<h2 class="text-error font-headline-md text-headline-md leading-none">RED LIGHT</h2>
-</div>
-</div>
-<div class="flex flex-col items-end">
-<span class="text-error font-display-lg text-[48px] font-bold leading-none tracking-tighter" id="countdown">24s</span>
-<span class="text-on-surface-variant font-label-sm">at Broadway St.</span>
-</div>
-</div>
-</div>
-<!-- Lane Guidance & Next Turn -->
-<div class="w-full flex justify-center">
-<div class="bg-surface-container/80 glass-panel rounded-lg px-gutter py-3 flex items-center gap-lg border border-outline-variant/20 shadow-lg pointer-events-auto">
-<div class="bg-primary-container p-2 rounded-lg flex items-center justify-center">
-<span class="material-symbols-outlined text-on-primary-container text-[32px]">turn_right</span>
-</div>
-<div class="flex flex-col">
-<span class="text-primary font-headline-sm text-headline-sm leading-tight">450m • Madison Ave</span>
-<div class="flex items-center gap-1.5 mt-1">
-<span class="material-symbols-outlined text-on-surface-variant text-sm" style="font-variation-settings: 'FILL' 1;">arrow_upward</span>
-<span class="material-symbols-outlined text-on-surface-variant text-sm" style="font-variation-settings: 'FILL' 1;">arrow_upward</span>
-<div class="bg-primary/20 p-0.5 rounded border border-primary/30 flex items-center">
-<span class="material-symbols-outlined text-primary text-sm" style="font-variation-settings: 'FILL' 1;">turn_right</span>
-</div>
-<span class="material-symbols-outlined text-on-surface-variant/40 text-sm">arrow_upward</span>
-</div>
-</div>
-</div>
-</div>
-</div>
-<!-- Center Viewport (Floating Controls) -->
-<div class="flex-grow relative z-10">
-<!-- Recenter Button -->
-<div class="absolute right-gutter bottom-gutter flex flex-col gap-md items-end">
-<button class="w-14 h-14 bg-surface-container-high rounded-full flex items-center justify-center shadow-lg border border-outline-variant/30 active:scale-95 transition-all text-primary">
-<span class="material-symbols-outlined text-[28px]">my_location</span>
-</button>
-<button class="w-14 h-14 bg-surface-container-high rounded-full flex items-center justify-center shadow-lg border border-outline-variant/30 active:scale-95 transition-all text-secondary">
-<span class="material-symbols-outlined text-[28px]">report</span>
-</button>
-</div>
-<!-- Speed & Limit Overlay -->
-<div class="absolute left-gutter bottom-gutter flex flex-col items-start gap-sm">
-<div class="bg-white rounded-full border-4 border-secondary-container p-4 w-16 h-16 flex items-center justify-center shadow-xl">
-<span class="text-surface font-display-lg text-[20px] font-bold">60</span>
-</div>
-<div class="bg-surface-container/90 glass-panel p-6 rounded-2xl border border-outline-variant/30 shadow-2xl flex flex-col items-center min-w-[120px]">
-<span class="font-display-lg text-[56px] text-on-surface font-black leading-none" id="current-speed">58</span>
-<span class="font-label-sm text-on-surface-variant uppercase tracking-widest mt-1">KM/H</span>
-</div>
-</div>
-</div>
-<!-- Bottom Dashboard: Arrival Stats -->
-<div class="relative z-20 px-gutter pb-safe-area-bottom w-full">
-<div class="bg-surface-container-low/95 glass-panel rounded-t-3xl border-t border-x border-outline-variant/30 w-full shadow-[0_-12px_24px_rgba(0,0,0,0.4)]">
-<div class="flex flex-row items-center justify-between px-8 py-6 max-w-4xl mx-auto">
-<div class="flex flex-col">
-<span class="font-label-sm text-on-surface-variant uppercase">Arrival</span>
-<div class="flex items-baseline gap-2">
-<span class="font-headline-md text-[28px] text-primary">16:42</span>
-<span class="text-on-surface-variant font-body-md text-sm">PM</span>
-</div>
-</div>
-<div class="h-12 w-[1px] bg-outline-variant/30"></div>
-<div class="flex flex-col items-center">
-<span class="font-label-sm text-on-surface-variant uppercase">Remaining</span>
-<div class="flex items-baseline gap-1">
-<span class="font-headline-md text-[28px] text-on-surface">12</span>
-<span class="text-on-surface-variant font-body-md">min</span>
-</div>
-</div>
-<div class="h-12 w-[1px] bg-outline-variant/30"></div>
-<div class="flex flex-col items-end">
-<span class="font-label-sm text-on-surface-variant uppercase">Distance</span>
-<div class="flex items-baseline gap-1">
-<span class="font-headline-md text-[28px] text-on-surface">8.4</span>
-<span class="text-on-surface-variant font-body-md">km</span>
-</div>
-</div>
-<div class="hidden sm:block h-12 w-[1px] bg-outline-variant/30"></div>
-<button class="bg-secondary-container text-on-secondary-fixed hover:brightness-110 active:scale-95 transition-all px-8 py-3 rounded-full font-label-lg uppercase hidden sm:flex items-center gap-2">
-<span class="material-symbols-outlined text-sm">close</span>
-                    Exit
-                </button>
-</div>
-<!-- Visual Progress Bar -->
-<div class="w-full h-1.5 bg-surface-variant/40 relative overflow-hidden">
-<div class="absolute left-0 top-0 h-full bg-primary w-[68%] transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(78,222,163,0.5)]"></div>
-</div>
-</div>
-</div>
-<!-- Micro-interactions Script -->
-<script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // Simulated Countdown
-            let seconds = 24;
-            const countdownEl = document.getElementById('countdown');
-            const interval = setInterval(() => {
-                seconds--;
-                if (seconds >= 0) {
-                    countdownEl.innerText = `${seconds}s`;
-                    if (seconds <= 5) {
-                        countdownEl.classList.add('animate-pulse-soft');
-                    }
-                } else {
-                    clearInterval(interval);
-                }
-            }, 1000);
 
-            // Simulated Speed Variation
-            const speedEl = document.getElementById('current-speed');
-            setInterval(() => {
-                let current = parseInt(speedEl.innerText);
-                let change = Math.floor(Math.random() * 3) - 1; // -1, 0, or 1
-                let next = current + change;
-                if (next > 55 && next < 62) {
-                    speedEl.innerText = next;
-                    if (next > 60) {
-                        speedEl.classList.remove('text-on-surface');
-                        speedEl.classList.add('text-error');
-                    } else {
-                        speedEl.classList.remove('text-error');
-                        speedEl.classList.add('text-on-surface');
-                    }
-                }
-            }, 2000);
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "background": "#081425",
+            "surface": "#081425",
+            "surface-container": "#152031",
+            "surface-container-high": "#1f2a3c",
+            "primary": "#4edea3",
+            "primary-container": "#10b981",
+            "error": "#ff7878"
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body class="bg-background text-slate-100 font-sans overflow-hidden h-screen w-screen flex flex-col">
+
+  <!-- 1. Background Map Layer (Leaflet 지도) -->
+  <div id="map" class="fixed inset-0 z-0 dark-tiles"></div>
+
+  <!-- 2. Top UI Overlay: 검색창 및 다음 신호 카드 -->
+  <div class="relative z-20 px-4 pt-4 w-full flex flex-col gap-3 pointer-events-none items-center">
+    
+    <!-- 검색/경로 입력 바 (Stitch UI에 추가 통합) -->
+    <div class="bg-surface-container/90 glass-panel rounded-xl border border-slate-700/50 p-3 flex flex-wrap sm:flex-nowrap items-center gap-2 w-full max-w-2xl pointer-events-auto shadow-2xl">
+      <input type="text" id="startInput" value="서현역" placeholder="출발지" class="bg-slate-900/80 border border-slate-700 text-white text-sm rounded-lg p-2.5 flex-1 focus:ring-primary focus:border-primary">
+      <input type="text" id="destInput" value="분당대진고등학교" placeholder="목적지" class="bg-slate-900/80 border border-slate-700 text-white text-sm rounded-lg p-2.5 flex-1 focus:ring-primary focus:border-primary">
+      
+      <select id="modeSelect" class="bg-slate-900/80 border border-slate-700 text-white text-sm rounded-lg p-2.5">
+        <option value="driving">🚗 차도</option>
+        <option value="foot">🚶 보행자</option>
+      </select>
+      
+      <button onclick="searchRoute()" class="bg-primary-container text-slate-950 font-bold px-4 py-2.5 rounded-lg text-sm hover:brightness-110 active:scale-95 transition-all">
+        경로 검색
+      </button>
+    </div>
+
+    <!-- Next Signal Card (가장 가까운 신호등 요약) -->
+    <div class="w-full flex justify-center">
+      <div class="bg-surface-container/90 glass-panel rounded-xl border border-slate-700/50 px-6 py-3 flex items-center justify-between gap-8 w-full max-w-2xl pointer-events-auto shadow-xl">
+        <div class="flex items-center gap-3">
+          <div class="flex flex-col gap-1 items-center bg-slate-900 p-1.5 rounded-full border border-slate-700">
+            <div id="top-red-light" class="w-3.5 h-3.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]"></div>
+            <div id="top-green-light" class="w-3.5 h-3.5 rounded-full bg-slate-700"></div>
+          </div>
+          <div class="flex flex-col">
+            <span class="text-slate-400 text-[10px] uppercase tracking-widest font-semibold">전방 주요 신호</span>
+            <h2 id="top-signal-text" class="text-red-400 font-bold text-lg leading-tight">RED LIGHT</h2>
+          </div>
+        </div>
+        <div class="flex flex-col items-end">
+          <span class="text-red-400 font-extrabold text-3xl tracking-tighter" id="top-signal-count">--초</span>
+          <span class="text-slate-400 text-xs" id="top-signal-name">교차로 탐색 중</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 3. Center Viewport Controls (우측 하단 컨트롤) -->
+  <div class="flex-grow relative z-10 pointer-events-none">
+    <div class="absolute right-4 bottom-4 flex flex-col gap-3 items-end pointer-events-auto">
+      <button onclick="recenterMap()" class="w-12 h-12 bg-slate-800/90 hover:bg-slate-700 rounded-full flex items-center justify-center shadow-lg border border-slate-700 active:scale-95 transition-all text-primary">
+        <span class="material-symbols-outlined text-[24px]">my_location</span>
+      </button>
+    </div>
+
+    <!-- 속도계 UI -->
+    <div class="absolute left-4 bottom-4 flex flex-col items-start gap-2">
+      <div class="bg-surface-container/90 glass-panel p-4 rounded-2xl border border-slate-700/50 shadow-2xl flex flex-col items-center min-w-[100px]">
+        <span class="text-4xl text-white font-black leading-none" id="current-speed">58</span>
+        <span class="text-[10px] text-slate-400 uppercase tracking-widest mt-1">KM/H</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Bottom Dashboard: Arrival Stats -->
+  <div class="relative z-20 px-4 pb-4 w-full">
+    <div class="bg-surface-container/95 glass-panel rounded-2xl border border-slate-700/50 w-full shadow-2xl max-w-4xl mx-auto">
+      <div class="flex flex-row items-center justify-between px-6 py-4">
+        <div class="flex flex-col">
+          <span class="text-[10px] text-slate-400 uppercase font-semibold">예상 도착</span>
+          <div class="flex items-baseline gap-1">
+            <span class="text-xl font-bold text-primary" id="eta-time">--:--</span>
+          </div>
+        </div>
+        <div class="h-8 w-[1px] bg-slate-700"></div>
+        <div class="flex flex-col items-center">
+          <span class="text-[10px] text-slate-400 uppercase font-semibold">남은 시간</span>
+          <div class="flex items-baseline gap-1">
+            <span class="text-xl font-bold text-slate-100" id="eta-duration">--</span>
+            <span class="text-xs text-slate-400">분</span>
+          </div>
+        </div>
+        <div class="h-8 w-[1px] bg-slate-700"></div>
+        <div class="flex flex-col items-end">
+          <span class="text-[10px] text-slate-400 uppercase font-semibold">총 거리</span>
+          <div class="flex items-baseline gap-1">
+            <span class="text-xl font-bold text-slate-100" id="eta-distance">--</span>
+            <span class="text-xs text-slate-400">km</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 앱 로직 및 지도 스크립트 -->
+  <script>
+    const map = L.map('map', { zoomControl: false }).setView([37.3827, 127.1189], 14);
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+
+    let routeLayer = null;
+    let mainMarkers = [];
+    let trafficMarkersMap = new Map();
+    let timerInterval = null;
+    let currentTrafficData = [];
+
+    // 신호등 상태 실시간 계산 (60초 주기 시뮬레이션)
+    function getSignalState(offset) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const cycleTime = (nowSec + offset) % 60;
+      
+      if (cycleTime < 30) {
+        return { color: 'green', statusText: '🟢 초록', remaining: 30 - cycleTime };
+      } else {
+        return { color: 'red', statusText: '🔴 빨간', remaining: 60 - cycleTime };
+      }
+    }
+
+    async function searchRoute() {
+      const start = document.getElementById('startInput').value;
+      const destination = document.getElementById('destInput').value;
+      const mode = document.getElementById('modeSelect').value;
+
+      if (!start || !destination) return alert("출발지와 목적지를 입력하세요.");
+
+      try {
+        const response = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start, destination, mode })
         });
-    </script>
-</body></html>
+
+        const data = await response.json();
+        if (!data.success) return alert("에러: " + data.error);
+
+        // 초기화
+        if (timerInterval) clearInterval(timerInterval);
+        mainMarkers.forEach(m => map.removeLayer(m));
+        trafficMarkersMap.forEach(m => map.removeLayer(m));
+        mainMarkers = [];
+        trafficMarkersMap.clear();
+        if (routeLayer) map.removeLayer(routeLayer);
+
+        // 1. 출발지/도착지 마커
+        const sMarker = L.marker([data.coords.start.lat, data.coords.start.lng]).addTo(map).bindPopup("출발지: " + start);
+        const dMarker = L.marker([data.coords.dest.lat, data.coords.dest.lng]).addTo(map).bindPopup("목적지: " + destination);
+        mainMarkers.push(sMarker, dMarker);
+
+        // 2. 경로선 (Tailwind Neon Green/Cyan 스타일)
+        if (data.routeGeometry) {
+          const lineColor = mode === 'foot' ? '#10b981' : '#4edea3';
+          routeLayer = L.geoJSON(data.routeGeometry, {
+            style: { color: lineColor, weight: 6, opacity: 0.9 }
+          }).addTo(map);
+          map.fitBounds(routeLayer.getBounds(), { padding: [60, 60] });
+        }
+
+        // 3. 하단 요약 정보 난수/시뮬레이션 업데이트
+        document.getElementById('eta-time').innerText = new Date(Date.now() + 12*60000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        document.getElementById('eta-duration').innerText = '12';
+        document.getElementById('eta-distance').innerText = '4.2';
+
+        // 4. 신호등 마커 객체 생성
+        currentTrafficData = data.trafficLights || [];
+        currentTrafficData.forEach(tl => {
+          const marker = L.marker([tl.lat, tl.lng]).addTo(map);
+          trafficMarkersMap.set(tl.id, marker);
+        });
+
+        // 5. 실시간 타이머 가동
+        updateTrafficSignals();
+        timerInterval = setInterval(updateTrafficSignals, 1000);
+
+      } catch (e) {
+        console.error(e);
+        alert("경로를 불러오는 중 문제가 발생했습니다.");
+      }
+    }
+
+    function updateTrafficSignals() {
+      if (currentTrafficData.length === 0) return;
+
+      currentTrafficData.forEach((tl, index) => {
+        const signal = getSignalState(tl.offset);
+        const marker = trafficMarkersMap.get(tl.id);
+
+        if (marker) {
+          const iconHtml = `
+            <div class="signal-marker-badge ${signal.color}">
+              <span>${signal.statusText}</span>
+              <span><b>${signal.remaining}</b>초</span>
+            </div>
+          `;
+          
+          marker.setIcon(L.divIcon({
+            html: iconHtml,
+            className: '',
+            iconSize: [110, 30],
+            iconAnchor: [55, 15]
+          }));
+        }
+
+        // 맨 첫 번째 신호등을 상단 카드에 대표로 표시
+        if (index === 0) {
+          document.getElementById('top-signal-name').innerText = tl.name;
+          document.getElementById('top-signal-count').innerText = `${signal.remaining}초`;
+          
+          const textEl = document.getElementById('top-signal-text');
+          const redLight = document.getElementById('top-red-light');
+          const greenLight = document.getElementById('top-green-light');
+
+          if (signal.color === 'red') {
+            textEl.innerText = "RED LIGHT";
+            textEl.className = "text-red-400 font-bold text-lg leading-tight";
+            redLight.className = "w-3.5 h-3.5 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.8)]";
+            greenLight.className = "w-3.5 h-3.5 rounded-full bg-slate-700";
+          } else {
+            textEl.innerText = "GREEN LIGHT";
+            textEl.className = "text-emerald-400 font-bold text-lg leading-tight";
+            redLight.className = "w-3.5 h-3.5 rounded-full bg-slate-700";
+            greenLight.className = "w-3.5 h-3.5 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]";
+          }
+        }
+      });
+    }
+
+    function recenterMap() {
+      if (routeLayer) {
+        map.fitBounds(routeLayer.getBounds(), { padding: [60, 60] });
+      }
+    }
+
+    // 가상 속도 변화 애니메이션
+    setInterval(() => {
+      const speedEl = document.getElementById('current-speed');
+      let current = parseInt(speedEl.innerText);
+      let next = current + (Math.floor(Math.random() * 3) - 1);
+      if (next >= 40 && next <= 60) speedEl.innerText = next;
+    }, 2000);
+  </script>
+</body>
+</html>
