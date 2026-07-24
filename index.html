@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>신호등 지도 (Traffic Light Map)</title>
+  <title>실시간 신호등 지도 (Traffic Light Map)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -19,19 +19,22 @@
     }
     .search-box button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
     
-    /* 선명하고 눈에 잘 띄는 신호등 마커 스타일 */
+    /* 실시간 신호등 마커 디자인 */
     .traffic-badge {
       background: #ffffff;
-      border: 2px solid #222;
-      border-radius: 50%;
-      font-size: 22px;
-      width: 32px;
-      height: 32px;
+      border: 2px solid #333;
+      border-radius: 20px;
+      padding: 2px 6px;
+      font-size: 12px;
+      font-weight: bold;
       display: flex;
       align-items: center;
-      justify-content: center;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      gap: 4px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      white-space: nowrap;
     }
+    .traffic-badge.green { border-color: #28a745; color: #28a745; }
+    .traffic-badge.red { border-color: #dc3545; color: #dc3545; }
   </style>
 </head>
 <body>
@@ -40,8 +43,8 @@
     <input type="text" id="startInput" placeholder="출발지" value="서현역">
     <input type="text" id="destInput" placeholder="목적지" value="분당대진고등학교">
     <select id="modeSelect">
-      <option value="driving">차도 경로</option>
-      <option value="foot">보행자 경로</option>
+      <option value="driving">🚗 차도 경로</option>
+      <option value="foot">🚶 보행자 경로</option>
     </select>
     <button onclick="searchRoute()">경로 검색</button>
   </div>
@@ -59,15 +62,29 @@
 
     let routeLayer = null;
     let mainMarkers = [];
-    let trafficMarkers = [];
+    let trafficMarkersMap = new Map(); // 신호등 실시간 업데이트용 Map
+    let timerInterval = null;
+    let currentTrafficData = [];
 
-    // 🚦 커스텀 신호등 마커
-    const trafficIcon = L.divIcon({
-      html: '<div class="traffic-badge">🚦</div>',
-      className: '',
-      iconSize: [32, 32],
-      iconAnchor: [16, 16]
-    });
+    // 신호등 상태 계산 함수 (60초 주기: 초록불 30초, 빨간불 30초)
+    function getSignalState(offset) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const cycleTime = (nowSec + offset) % 60; // 0 ~ 59초
+      
+      if (cycleTime < 30) {
+        return {
+          color: 'green',
+          statusText: '🟢 초록불',
+          remaining: 30 - cycleTime
+        };
+      } else {
+        return {
+          color: 'red',
+          statusText: '🔴 빨간불',
+          remaining: 60 - cycleTime
+        };
+      }
+    }
 
     async function searchRoute() {
       const start = document.getElementById('startInput').value;
@@ -86,40 +103,73 @@
         const data = await response.json();
         if (!data.success) return alert("에러: " + data.error);
 
-        // 이전 마커 초기화
+        // 이전 타이머 및 마커 정리
+        if (timerInterval) clearInterval(timerInterval);
         mainMarkers.forEach(m => map.removeLayer(m));
-        trafficMarkers.forEach(tm => map.removeLayer(tm));
+        trafficMarkersMap.forEach(m => map.removeLayer(m));
         mainMarkers = [];
-        trafficMarkers = [];
+        trafficMarkersMap.clear();
         if (routeLayer) map.removeLayer(routeLayer);
 
-        // 1. 출발지/도착지 마커
+        // 1. 출발지 / 목적지 마커
         const sMarker = L.marker([data.coords.start.lat, data.coords.start.lng]).addTo(map).bindPopup("<b>출발지:</b> " + start);
         const dMarker = L.marker([data.coords.dest.lat, data.coords.dest.lng]).addTo(map).bindPopup("<b>목적지:</b> " + destination);
         mainMarkers.push(sMarker, dMarker);
 
-        // 2. 경로선그리기
+        // 2. 경로선 (보행자/차도)
         if (data.routeGeometry) {
+          const lineColor = mode === 'foot' ? '#28a745' : '#0055ff';
           routeLayer = L.geoJSON(data.routeGeometry, {
-            style: { color: '#0055ff', weight: 6, opacity: 0.8 }
+            style: { color: lineColor, weight: 6, opacity: 0.8 }
           }).addTo(map);
           map.fitBounds(routeLayer.getBounds(), { padding: [40, 40] });
         }
 
-        // 3. 신호등 마커 렌더링 🚦
-        if (data.trafficLights && data.trafficLights.length > 0) {
-          data.trafficLights.forEach((tl, idx) => {
-            const tMarker = L.marker([tl.lat, tl.lng], { icon: trafficIcon })
-              .addTo(map)
-              .bindPopup(`<b>🚦 신호등 교차로 #${idx + 1}</b><br>${tl.name}`);
-            trafficMarkers.push(tMarker);
-          });
-        }
+        // 3. 실시간 신호등 마커 생성
+        currentTrafficData = data.trafficLights || [];
+        currentTrafficData.forEach(tl => {
+          const marker = L.marker([tl.lat, tl.lng]).addTo(map);
+          trafficMarkersMap.set(tl.id, marker);
+        });
+
+        // 4. 1초마다 실시간으로 신호등 상태와 카운트다운 업데이트
+        updateTrafficSignals();
+        timerInterval = setInterval(updateTrafficSignals, 1000);
 
       } catch (e) {
         console.error(e);
         alert("경로를 불러오는 중 문제가 발생했습니다.");
       }
+    }
+
+    // 1초마다 모든 신호등 마커 화면 갱신
+    function updateTrafficSignals() {
+      currentTrafficData.forEach(tl => {
+        const signal = getSignalState(tl.offset);
+        const marker = trafficMarkersMap.get(tl.id);
+
+        if (marker) {
+          const iconHtml = `
+            <div class="traffic-badge ${signal.color}">
+              ${signal.statusText} <b>${signal.remaining}초</b>
+            </div>
+          `;
+          
+          marker.setIcon(L.divIcon({
+            html: iconHtml,
+            className: '',
+            iconSize: [80, 24],
+            iconAnchor: [40, 12]
+          }));
+
+          const nextColorText = signal.color === 'green' ? '빨간불' : '초록불';
+          marker.bindPopup(`
+            <b>🚦 ${tl.name}</b><br>
+            현재 상태: <b>${signal.statusText}</b><br>
+            <b>${nextColorText}</b> 변환까지 <b>${signal.remaining}초</b> 남음
+          `);
+        }
+      });
     }
   </script>
 </body>
